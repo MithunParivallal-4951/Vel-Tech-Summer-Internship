@@ -1,10 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-
-# ── Load dataset ────────────────────────────────────────────────────────────
 df = pd.read_csv('student-mat.csv', sep=';')
 
-# ── CHART 1: Bar — Average G3 grade by school ──────────────────────────────
 plt.figure(figsize=(8, 5))
 avg_grade = df.groupby('school')['G3'].mean()
 colors = ['#4C72B0', '#DD8452']
@@ -23,7 +20,6 @@ plt.savefig('chart1_bar_grade_by_school.png', dpi=150)
 plt.show()
 print("Saved: chart1_bar_grade_by_school.png")
 
-# ── CHART 2: Scatter — G1 vs G3 ────────────────────────────────────────────
 plt.figure(figsize=(8, 5))
 gp = df[df['school'] == 'GP']
 ms = df[df['school'] == 'MS']
@@ -46,7 +42,6 @@ plt.savefig('chart2_scatter_G1_vs_G3.png', dpi=150)
 plt.show()
 print("Saved: chart2_scatter_G1_vs_G3.png")
 
-# ── CHART 3: Histogram — Age distribution ──────────────────────────────────
 plt.figure(figsize=(8, 5))
 plt.hist(df['age'], bins=range(int(df['age'].min()), int(df['age'].max()) + 2),
          color='#4C72B0', edgecolor='white', linewidth=1.2, alpha=0.85)
@@ -64,7 +59,6 @@ plt.savefig('chart3_histogram_age.png', dpi=150)
 plt.show()
 print("Saved: chart3_histogram_age.png")
 
-# ── CHART 4: Line — G1 → G2 → G3 average trend ────────────────────────────
 plt.figure(figsize=(8, 5))
 averages = [df['G1'].mean(), df['G2'].mean(), df['G3'].mean()]
 periods  = ['G1\n(1st Period)', 'G2\n(2nd Period)', 'G3\n(Final)']
