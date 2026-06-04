@@ -1,0 +1,24 @@
+"""
+=============================================================
+  PROJECT NAME  : CineProphet - Movie Recommendation Engine
+=============================================================
+  DATASET       : 16k_Movies-mat.csv
+                  Contains information about movies including
+                  genre, ratings, votes, runtime, and revenue
+
+  FEATURES (X)  :
+                  1. genre       - The category/type of the movie
+                                   (Action, Comedy, Drama, etc.)
+                  2. vote_count  - Number of user votes the movie received
+                  3. runtime     - Duration of the movie in minutes
+                  4. popularity  - Popularity score of the movie
+
+  TARGET (y)    :
+                  vote_average  - The average user rating of the movie
+                                  (scale of 0 to 10)
+
+  QUESTION      : Based on a movie's genre, vote count, runtime,
+                  and popularity score, can we predict the average
+                  rating that users will give to a movie?
+=============================================================
+"""
