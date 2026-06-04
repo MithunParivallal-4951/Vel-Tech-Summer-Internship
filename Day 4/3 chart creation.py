@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 df = pd.read_csv('student-mat.csv', sep=';')
-
+ 
 plt.figure(figsize=(8, 5))
 avg_grade = df.groupby('school')['G3'].mean()
 colors = ['#4C72B0', '#DD8452']
