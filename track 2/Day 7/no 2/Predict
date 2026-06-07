@@ -1,0 +1,73 @@
+"""
+predict.py  —  Load trained model and get recommendations
+===========================================================
+Run  : python predict.py
+Requires the 3 .pkl files produced by train.py
+"""
+
+import pandas as pd
+import numpy as np
+import joblib
+from sklearn.metrics.pairwise import cosine_similarity
+
+# ─────────────────────────────────────────────
+# LOAD TRAINED ARTIFACTS
+# ─────────────────────────────────────────────
+print("Loading trained model...")
+
+tfidf   = joblib.load("tfidf_vectorizer.pkl")
+matrix  = joblib.load("tfidf_matrix.pkl")
+df      = pd.read_pickle("movies_df.pkl")
+
+print(f"✓ Model loaded | {len(df):,} movies\n")
+
+# Build title → index lookup
+indices = (
+    pd.Series(df.index, index=df["Title_clean"].str.lower())
+    .drop_duplicates()
+)
+
+
+# ─────────────────────────────────────────────
+# RECOMMENDER
+# ─────────────────────────────────────────────
+def recommend(title: str, n: int = 10) -> pd.DataFrame:
+    key = title.lower().strip()
+
+    if key not in indices:
+        matches = [t for t in indices.index if key in t]
+        if not matches:
+            print(f"[✗] '{title}' not found.")
+            return pd.DataFrame()
+        key = matches[0]
+        print(f"[~] Closest match: '{key}'")
+
+    idx         = indices[key]
+    sim_scores  = cosine_similarity(matrix[idx], matrix).flatten()
+    sim_scores[idx] = 0
+
+    top_idx     = np.argsort(sim_scores)[::-1][:n]
+    results     = df.iloc[top_idx][["Title", "Genres", "Rating", "Directed by", "Release Date"]].copy()
+    results["Similarity"] = sim_scores[top_idx].round(4)
+    results = results.reset_index(drop=True)
+    results.index += 1
+    return results
+
+
+# ─────────────────────────────────────────────
+# INTERACTIVE LOOP
+# ─────────────────────────────────────────────
+if __name__ == "__main__":
+    print("=" * 55)
+    print("  Movie Recommender  (type 'quit' to exit)")
+    print("=" * 55)
+
+    while True:
+        title = input("\nEnter movie title: ").strip()
+        if title.lower() in ("quit", "exit", "q"):
+            break
+        n = input("How many recommendations? [default 10]: ").strip()
+        n = int(n) if n.isdigit() else 10
+        results = recommend(title, n)
+        if not results.empty:
+            print(f"\n{results.to_string()}")
