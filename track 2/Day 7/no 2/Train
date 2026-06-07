@@ -1,0 +1,107 @@
+"""
+train.py  —  Movie Recommendation Model Training
+==================================================
+Run  : python train.py
+Output:
+    tfidf_vectorizer.pkl   ← trained TF-IDF vectorizer
+    tfidf_matrix.pkl       ← precomputed feature matrix (16k × 15k)
+    movies_df.pkl          ← cleaned movie metadata
+"""
+
+import pandas as pd
+import numpy as np
+import re
+import joblib
+import warnings
+warnings.filterwarnings("ignore")
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# ─────────────────────────────────────────────
+# CONFIG
+# ─────────────────────────────────────────────
+DATA_PATH        = "16k_Movies-mat.csv.csv"   # ← update if needed
+VECTORIZER_OUT   = "tfidf_vectorizer.pkl"
+MATRIX_OUT       = "tfidf_matrix.pkl"
+DATAFRAME_OUT    = "movies_df.pkl"
+MAX_FEATURES     = 15000
+
+
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+def clean_text(text: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9 ]", " ", str(text)).lower().strip()
+
+
+# ─────────────────────────────────────────────
+# STEP 1 — LOAD
+# ─────────────────────────────────────────────
+print("\n[1/4] Loading dataset...")
+df = pd.read_csv(DATA_PATH)
+print(f"      {len(df):,} movies loaded | {df.shape[1]} columns")
+
+
+# ─────────────────────────────────────────────
+# STEP 2 — PREPROCESS
+# ─────────────────────────────────────────────
+print("[2/4] Preprocessing...")
+
+# Fill nulls
+for col in ["Description", "Genres", "Directed by", "Written by"]:
+    df[col] = df[col].fillna("")
+
+# Clean title (strip year)
+df["Title_clean"] = (
+    df["Title"].str.replace(r"\(\d{4}\)", "", regex=True).str.strip()
+)
+
+# Build feature soup
+#   Genres × 3  → boosted weight in TF-IDF space
+#   Director / Writers collapsed to single token (no spaces)
+df["soup"] = (
+    df["Genres"].apply(lambda x: " ".join(clean_text(x).split(",") * 3))
+    + " "
+    + df["Description"].apply(clean_text)
+    + " "
+    + df["Directed by"].apply(lambda x: clean_text(x).replace(" ", ""))
+    + " "
+    + df["Written by"].apply(lambda x: clean_text(x).replace(" ", ""))
+)
+
+print(f"      Feature soup built for {len(df):,} movies")
+
+
+# ─────────────────────────────────────────────
+# STEP 3 — TRAIN TF-IDF
+# ─────────────────────────────────────────────
+print(f"[3/4] Training TF-IDF vectorizer (max_features={MAX_FEATURES:,})...")
+
+tfidf   = TfidfVectorizer(stop_words="english", max_features=MAX_FEATURES)
+matrix  = tfidf.fit_transform(df["soup"])
+
+print(f"      Matrix shape: {matrix.shape[0]:,} movies × {matrix.shape[1]:,} features")
+
+
+# ─────────────────────────────────────────────
+# STEP 4 — SAVE ARTIFACTS
+# ─────────────────────────────────────────────
+print("[4/4] Saving trained artifacts...")
+
+joblib.dump(tfidf, VECTORIZER_OUT)
+print(f"      ✓ {VECTORIZER_OUT}")
+
+joblib.dump(matrix, MATRIX_OUT)
+print(f"      ✓ {MATRIX_OUT}")
+
+df_save = df[["Title", "Title_clean", "Genres", "Rating",
+              "Directed by", "Release Date"]].copy()
+df_save.to_pickle(DATAFRAME_OUT)
+print(f"      ✓ {DATAFRAME_OUT}")
+
+print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+print("  Training complete! Artifacts saved:")
+print(f"   • {VECTORIZER_OUT}  — TF-IDF model")
+print(f"   • {MATRIX_OUT}      — Feature matrix")
+print(f"   • {DATAFRAME_OUT}   — Movie metadata")
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
