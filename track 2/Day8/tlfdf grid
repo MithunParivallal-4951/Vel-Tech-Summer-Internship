@@ -1,0 +1,260 @@
+"""
+train_tfidf_grid_search.py
+──────────────────────────
+Grid-search over TF-IDF hyperparameters for the movie recommender.
+
+Parameters tuned
+----------------
+- max_features   : vocabulary size cap
+- ngram_range    : unigrams only vs. unigrams + bigrams
+- sublinear_tf   : apply log(1 + tf) instead of raw tf
+- min_df         : ignore terms that appear in fewer than N documents
+- use_idf        : toggle IDF weighting
+
+Evaluation metric
+-----------------
+Intra-list similarity (ILS): average pairwise cosine similarity inside each
+recommendation list.  Lower ILS → more diverse results (usually better UX).
+We also report the mean similarity score of the top-K results so you can see
+how "confident" the model is.
+
+Usage
+-----
+    python train_tfidf_grid_search.py --data sample_movies.csv
+    python train_tfidf_grid_search.py --data sample_movies.csv --limit 5 --save-best
+"""
+
+import argparse
+import csv
+import itertools
+import math
+import pickle
+import re
+import time
+from collections import Counter
+from pathlib import Path
+
+# ── tuneable stop-word list ────────────────────────────────────────────────────
+BASE_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+    "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "with",
+}
+
+# ── parameter grid ─────────────────────────────────────────────────────────────
+PARAM_GRID = {
+    "max_features": [500, 1000, None],       # vocabulary size cap (None = unlimited)
+    "ngram_range":  [(1, 1), (1, 2)],        # unigrams vs unigrams+bigrams
+    "sublinear_tf": [False, True],            # log-normalised TF
+    "min_df":       [1, 2],                   # minimum document frequency
+    "use_idf":      [True, False],            # toggle IDF
+}
+
+TEXT_COLUMNS = ["overview", "genres", "director", "cast",
+                "Description", "Genres", "Directed by", "Written by"]
+TITLE_COLUMN = "title"
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def tokenize(text: str, ngram_range=(1, 1)) -> list[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    words = [w for w in words if w not in BASE_STOP_WORDS]
+    tokens = list(words)  # unigrams
+    if ngram_range[1] >= 2:
+        bigrams = ["_".join(words[i:i+2]) for i in range(len(words) - 1)]
+        tokens += bigrams
+    return tokens
+
+
+def build_tfidf_vectors(documents: list[list[str]], params: dict) -> list[dict]:
+    """
+    Build TF-IDF vectors from tokenised documents.
+
+    params keys: max_features, sublinear_tf, min_df, use_idf
+    """
+    max_features = params["max_features"]
+    sublinear_tf = params["sublinear_tf"]
+    min_df       = params["min_df"]
+    use_idf      = params["use_idf"]
+    n_docs       = len(documents)
+
+    # document frequency
+    df = Counter()
+    for tokens in documents:
+        df.update(set(tokens))
+
+    # vocabulary: filter by min_df, then cap by max_features
+    vocab = {term for term, freq in df.items() if freq >= min_df}
+    if max_features:
+        # keep the most frequent terms
+        vocab = set(sorted(vocab, key=lambda t: df[t], reverse=True)[:max_features])
+
+    # IDF
+    idf = {}
+    if use_idf:
+        for term in vocab:
+            idf[term] = math.log((n_docs + 1) / (df[term] + 1)) + 1
+    else:
+        for term in vocab:
+            idf[term] = 1.0
+
+    # TF-IDF vectors
+    vectors = []
+    for tokens in documents:
+        tf_counts = Counter(t for t in tokens if t in vocab)
+        total = len(tokens) or 1
+        vector = {}
+        for term, count in tf_counts.items():
+            tf = math.log(1 + count / total) if sublinear_tf else count / total
+            vector[term] = tf * idf[term]
+        vectors.append(vector)
+
+    return vectors
+
+
+def cosine_similarity(va: dict, vb: dict) -> float:
+    common = set(va) & set(vb)
+    dot = sum(va[t] * vb[t] for t in common)
+    mag_a = math.sqrt(sum(v * v for v in va.values()))
+    mag_b = math.sqrt(sum(v * v for v in vb.values()))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def load_movies(csv_path: Path) -> list[dict]:
+    with csv_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as f:
+        reader = csv.DictReader(f)
+        fields = reader.fieldnames or []
+        title_col = next((c for c in fields if c.lower().strip() == "title"), None)
+        text_cols = [c for c in fields if c in TEXT_COLUMNS or c.lower() in
+                     {t.lower() for t in TEXT_COLUMNS}]
+        text_cols = [c for c in text_cols if c != title_col]
+
+        movies = []
+        for row in reader:
+            title = row.get(title_col, "").strip()
+            if not title:
+                continue
+            combined = " ".join(row.get(c, "") for c in text_cols)
+            movies.append({"title": title, "combined": combined})
+    return movies, text_cols
+
+
+def evaluate(vectors: list[dict], top_k: int = 5) -> dict:
+    """
+    Evaluate a set of vectors using two metrics:
+    - mean_top_score : average similarity score of the top-K neighbour
+    - ils            : intra-list similarity (avg pairwise sim of top-K list)
+    """
+    n = len(vectors)
+    total_top_score = 0.0
+    total_ils = 0.0
+    sample = min(n, 50)  # evaluate on up to 50 movies for speed
+
+    for i in range(sample):
+        scores = []
+        for j in range(n):
+            if i == j:
+                continue
+            scores.append((j, cosine_similarity(vectors[i], vectors[j])))
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top = scores[:top_k]
+
+        total_top_score += sum(s for _, s in top) / max(len(top), 1)
+
+        # ILS: average pairwise similarity within the top-K list
+        pairs = list(itertools.combinations([j for j, _ in top], 2))
+        if pairs:
+            ils = sum(cosine_similarity(vectors[a], vectors[b]) for a, b in pairs) / len(pairs)
+        else:
+            ils = 0.0
+        total_ils += ils
+
+    return {
+        "mean_top_score": round(total_top_score / sample, 4),
+        "ils":            round(total_ils / sample, 4),
+    }
+
+
+def grid_search(movies: list[dict], param_grid: dict, top_k: int) -> list[dict]:
+    keys = list(param_grid.keys())
+    combos = list(itertools.product(*param_grid.values()))
+    results = []
+
+    print(f"\nRunning grid search over {len(combos)} parameter combinations...\n")
+    print(f"{'#':>3}  {'max_feat':>8}  {'ngram':>7}  {'sublin':>6}  "
+          f"{'min_df':>6}  {'use_idf':>7}  {'top_score':>9}  {'ILS':>6}  {'time(s)':>7}")
+    print("-" * 75)
+
+    for idx, combo in enumerate(combos, 1):
+        params = dict(zip(keys, combo))
+        t0 = time.perf_counter()
+
+        docs = [tokenize(m["combined"], params["ngram_range"]) for m in movies]
+        vectors = build_tfidf_vectors(docs, params)
+        metrics = evaluate(vectors, top_k)
+
+        elapsed = time.perf_counter() - t0
+        row = {**params, **metrics, "elapsed": round(elapsed, 3)}
+        results.append(row)
+
+        ngram_str = f"{params['ngram_range'][0]}-{params['ngram_range'][1]}"
+        mf = str(params["max_features"]) if params["max_features"] else "None"
+        print(f"{idx:>3}  {mf:>8}  {ngram_str:>7}  {str(params['sublinear_tf']):>6}  "
+              f"{params['min_df']:>6}  {str(params['use_idf']):>7}  "
+              f"{metrics['mean_top_score']:>9.4f}  {metrics['ils']:>6.4f}  {elapsed:>7.3f}")
+
+    return results
+
+
+def print_summary(results: list[dict]) -> dict:
+    # Best = highest mean_top_score (most confident model)
+    best = max(results, key=lambda r: r["mean_top_score"])
+    print("\n" + "=" * 75)
+    print("BEST CONFIGURATION (highest mean top-K similarity score)")
+    print("=" * 75)
+    for k, v in best.items():
+        print(f"  {k:<20}: {v}")
+    return best
+
+
+def save_best_model(movies: list[dict], best_params: dict, model_path: str):
+    docs = [tokenize(m["combined"], best_params["ngram_range"]) for m in movies]
+    vectors = build_tfidf_vectors(docs, best_params)
+    payload = {
+        "movies":      movies,
+        "vectors":     vectors,
+        "params":      best_params,
+    }
+    with open(model_path, "wb") as f:
+        pickle.dump(payload, f)
+    print(f"\nBest model saved → {model_path}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="Grid-search TF-IDF hyperparameters.")
+    parser.add_argument("--data",      default="sample_movies.csv", help="Path to CSV dataset")
+    parser.add_argument("--limit",     type=int, default=5,          help="Top-K for evaluation")
+    parser.add_argument("--save-best", action="store_true",          help="Save best model to disk")
+    parser.add_argument("--model",     default="best_tfidf_model.pkl")
+    args = parser.parse_args()
+
+    csv_path = Path(args.data)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Dataset not found: {csv_path}")
+
+    movies, text_cols = load_movies(csv_path)
+    print(f"Loaded {len(movies)} movies | text columns: {text_cols}")
+
+    results = grid_search(movies, PARAM_GRID, args.limit)
+    best = print_summary(results)
+
+    if args.save_best:
+        save_best_model(movies, best, args.model)
+
+
+if __name__ == "__main__":
+    main()
