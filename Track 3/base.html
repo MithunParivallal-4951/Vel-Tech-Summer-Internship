@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+
+{% block content %}
+
+<!-- Project overview -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <span class="eyebrow">Project Overview</span>
+      <h2>About the Student Registration System</h2>
+      <p>
+        This project is being built in stages by the Computer Applications team at Innolift
+        Institute of Technology. Day 1 establishes the front-end structure — Flask routing,
+        Jinja templates, and a consistent visual identity across all pages. Database storage,
+        validation, and live record management will be layered on in the days that follow.
+      </p>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="tag">D1</div>
+        <div>
+          <h4>Frontend Structure</h4>
+          <p>Flask project setup, page routing with <code>render_template()</code>, and the
+            Home, Registration, Students, and About pages styled with a shared theme.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="tag">D2</div>
+        <div>
+          <h4>Database Integration</h4>
+          <p>SQLite is connected so registration data is stored permanently and the Students
+            page reflects real records.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="tag">D3</div>
+        <div>
+          <h4>CRUD &amp; Validation</h4>
+          <p>Editing, deleting, and searching student records, plus form validation and
+            user feedback messages.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section section-alt">
+  <div class="container">
+    <div class="section-header">
+      <span class="eyebrow">Features</span>
+      <h2>What this system offers</h2>
+    </div>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">A</div>
+        <h3>Centralized Registration</h3>
+        <p>One consistent form for capturing every new student's academic and contact details.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">B</div>
+        <h3>Departmental View</h3>
+        <p>Records are tagged by department and year, making it easy to scan rosters at a glance.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">C</div>
+        <h3>Responsive Layout</h3>
+        <p>A mobile-friendly navigation bar and grid layouts that adapt to any screen size.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">D</div>
+        <h3>Built to Extend</h3>
+        <p>Clean Flask routes and templates make it straightforward to plug in SQLite next.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Team -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <span class="eyebrow">Team Information</span>
+      <h2>Built by the Day 1 Project Team</h2>
+      <p>A small team from the Department of Computer Applications collaborated on the
+        structure, design, and routing for this milestone.</p>
+    </div>
+
+    <div class="team-grid">
+      <div class="team-card">
+        <div class="avatar">AK</div>
+        <h4>Arjun Kumar</h4>
+        <span>Flask &amp; Routing</span>
+      </div>
+      <div class="team-card">
+        <div class="avatar">PS</div>
+        <h4>Priya Sharma</h4>
+        <span>UI &amp; CSS Design</span>
+      </div>
+      <div class="team-card">
+        <div class="avatar">KR</div>
+        <h4>Karthik Raja</h4>
+        <span>Templates &amp; Content</span>
+      </div>
+      <div class="team-card">
+        <div class="avatar">DL</div>
+        <h4>Divya Lakshmi</h4>
+        <span>Project Coordination</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
