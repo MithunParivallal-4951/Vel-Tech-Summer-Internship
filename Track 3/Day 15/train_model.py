@@ -1,0 +1,102 @@
+"""
+Fetches real movie poster images from TMDB (The Movie Database) and
+caches the results to disk so subsequent runs don't need to re-fetch.
+
+To enable real posters:
+  1. Create a free account at https://www.themoviedb.org/
+  2. Get an API key (v3 auth) from your account settings.
+  3. Set it as an environment variable before running the app:
+
+       export TMDB_API_KEY=your_key_here      # Linux / macOS
+       set TMDB_API_KEY=your_key_here         # Windows (cmd)
+
+If no API key is set, or a movie can't be found / a request fails, the
+poster_url for that movie is simply an empty string and the front-end
+falls back to its built-in genre-themed emoji/gradient poster card --
+so the app works fine either way.
+"""
+
+import os
+import json
+import urllib.request
+import urllib.parse
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CACHE_PATH = os.path.join(BASE_DIR, "poster_cache.json")
+
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
+TMDB_SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"
+
+_cache = {}
+_cache_loaded = False
+
+
+def _load_cache():
+    global _cache, _cache_loaded
+    if _cache_loaded:
+        return
+    if os.path.exists(CACHE_PATH):
+        try:
+            with open(CACHE_PATH, "r", encoding="utf-8") as f:
+                _cache = json.load(f)
+        except Exception:
+            _cache = {}
+    _cache_loaded = True
+
+
+def _save_cache():
+    try:
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(_cache, f)
+    except OSError:
+        pass
+
+
+def get_poster_url(title, year=None, timeout=4):
+    """
+    Return a TMDB poster image URL for the given movie title, or an empty
+    string if unavailable (no API key, not found, or request failed).
+
+    Results are cached in poster_cache.json so repeated lookups for the
+    same title are instant on future runs.
+    """
+    _load_cache()
+
+    cache_key = title.strip().lower()
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    if not TMDB_API_KEY:
+        return ""
+
+    poster_url = ""
+    try:
+        params = {"api_key": TMDB_API_KEY, "query": title}
+        if year:
+            params["year"] = year
+        url = TMDB_SEARCH_URL + "?" + urllib.parse.urlencode(params)
+
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = json.load(resp)
+
+        results = data.get("results") or []
+        if results:
+            poster_path = results[0].get("poster_path")
+            if poster_path:
+                poster_url = TMDB_IMAGE_BASE + poster_path
+    except Exception:
+        poster_url = ""
+
+    _cache[cache_key] = poster_url
+    _save_cache()
+    return poster_url
+
+
+def prefetch_posters(titles):
+    """Fetch and cache poster URLs for a list of titles up front (e.g. at
+    app startup) so the first page load isn't slowed down by lookups."""
+    if not TMDB_API_KEY:
+        return
+    for title in titles:
+        get_poster_url(title)
